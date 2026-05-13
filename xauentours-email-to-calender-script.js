@@ -109,7 +109,7 @@ function processCancellations(calendar, windowStart, windowEnd, dateString) {
         if (refToCancel && refToCancel !== "NO-REF") {
           const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
           eventsToDelete.forEach(event => {
-            console.log(`🚨 CANCELLATION PROCESSED: Deleting event for Ref ${refToCancel}`);
+            console.log(`🚨 ANNULATION : Événement supprimé -> Réf: ${refToCancel}`);
             event.deleteEvent();
           });
         }
@@ -215,6 +215,7 @@ function parseGYGEmail(body) {
 function createGYGEvent(calendar, data) {
   const event = calendar.createEvent(data.title, data.startTime, data.endTime, { location: data.pickup, description: data.description });
   event.setColor(CalendarApp.EventColor.RED);
+  console.log(`✅ NOUVEAU : GetYourGuide ajouté -> Réf: ${data.reference} [Couleur : RED]`);
 }
 
 // --- VIATOR / BOKUN ---
@@ -265,10 +266,13 @@ function createBokunEvent(calendar, data) {
 
   if (data.reference.startsWith("VIA")) {
     event.setColor(CalendarApp.EventColor.GREEN);
+    console.log(`✅ NOUVEAU : Bókun ajouté (Viator) -> Réf: ${data.reference} [Couleur : GREEN]`);
   } else if (data.reference.startsWith("BCE")) {
     event.setColor(CalendarApp.EventColor.MAUVE);
+    console.log(`✅ NOUVEAU : Bókun ajouté (Barceló) -> Réf: ${data.reference} [Couleur : MAUVE]`);
   } else {
     event.setColor(CalendarApp.EventColor.PALE_GREEN);
+    console.log(`✅ NOUVEAU : Bókun ajouté (Autre) -> Réf: ${data.reference} [Couleur : PALE_GREEN]`);
   }
 }
 
@@ -312,4 +316,5 @@ function parseCivitatisEmail(body) {
 function createCivitatisEvent(calendar, data) {
   const event = calendar.createEvent(data.title, data.startTime, data.endTime, { location: data.pickup, description: data.description });
   event.setColor(CalendarApp.EventColor.RED);
+  console.log(`✅ NOUVEAU : Civitatis ajouté -> Réf: ${data.reference} [Couleur : RED]`);
 }

@@ -73,6 +73,9 @@ This section must be updated every time the script is modified, audited, or push
 - Second update in the same session: aligned the script with the official CalendarApp color enum, replacing unsupported `PLUM` usage with `MAUVE`.
 - Audited the updated script again after the color fix; syntax check passed.
 - Pushed the v2.0 update to `origin main` after the final audit.
+- Third update: added French console logging to all event creators and the cancellation engine for production debugging and workflow tracking.
+- Verified that MAUVE is used consistently in both logs and color assignments.
+- README updated to reflect logging enhancements; push pending.
 
 ## Workflow tracking rule
 
