@@ -108,6 +108,7 @@ This section must be updated every time the script is modified, audited, or push
 - Syntax verified after audit-trail patch; audit remains optional until enabled.
 - Sixth update: added `startForeverTrigger()` for permanent mode while keeping `start22HourTrigger()` as the beta launcher.
 - Permanent mode clears the kill switch property and keeps the 5-minute trigger active until manual shutdown.
+- Seventh update: CRITICAL BUGFIX — corrected the Bokun cancellation query from `(from:bokun OR subject:"Cancelled booking")` to `from:bokun subject:"Cancelled booking"` to prevent false-positive deletion of active bookings caused by overly broad email matching.
 
 ## Workflow tracking rule
 

@@ -160,7 +160,7 @@ function cancelGYG(calendar, windowStart, windowEnd, dateString) {
 }
 
 function cancelBokun(calendar, windowStart, windowEnd, dateString) {
-  const query = `(from:bokun OR subject:"Cancelled booking") after:${dateString}`;
+  const query = `from:bokun subject:"Cancelled booking" after:${dateString}`;
   const threads = GmailApp.search(query);
 
   const searchStart = new Date();
