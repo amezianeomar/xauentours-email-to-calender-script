@@ -13,6 +13,9 @@
 // 🚀 1. THE LAUNCHER & KILL SWITCH
 // ==========================================
 
+const AUDIT_SHEET_PROPERTY_KEY = 'AUDIT_SHEET_ID';
+const AUDIT_SHEET_NAME = 'XauenTours Audit Trail';
+
 function start22HourTrigger() {
   // Clear any existing triggers so we don't accidentally run twice at the same time
   const triggers = ScriptApp.getProjectTriggers();
@@ -30,6 +33,57 @@ function start22HourTrigger() {
   PropertiesService.getScriptProperties().setProperty('KILL_TIME', killTime.toString());
   
   console.log(`🚀 LAUNCHED! The automation will run every 5 minutes and will self-destruct in 22 hours.`);
+}
+
+function startForeverTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+
+  ScriptApp.newTrigger('runAllOTAs')
+           .timeBased()
+           .everyMinutes(5)
+           .create();
+
+  PropertiesService.getScriptProperties().deleteProperty('KILL_TIME');
+
+  console.log(`🚀 PERMANENT MODE LAUNCHED! The automation will run every 5 minutes with no automatic shutdown.`);
+}
+
+function setupAuditSheet() {
+  const spreadsheet = SpreadsheetApp.create(AUDIT_SHEET_NAME);
+  const sheet = spreadsheet.getSheets()[0];
+  sheet.setName('Audit');
+  sheet.appendRow(['Timestamp', 'Action', 'OTA', 'Reference', 'Title', 'Start Time', 'Color', 'Notes']);
+  PropertiesService.getScriptProperties().setProperty(AUDIT_SHEET_PROPERTY_KEY, spreadsheet.getId());
+  console.log(`📝 Audit sheet created and linked -> ${spreadsheet.getUrl()}`);
+}
+
+function appendAuditRow(action, ota, reference, title, startTime, color, notes) {
+  const auditSheet = getAuditSheet_();
+  if (!auditSheet) return;
+
+  auditSheet.appendRow([
+    new Date().toISOString(),
+    action,
+    ota,
+    reference,
+    title,
+    startTime ? startTime.toISOString() : '',
+    color,
+    notes || ''
+  ]);
+}
+
+function getAuditSheet_() {
+  const spreadsheetId = PropertiesService.getScriptProperties().getProperty(AUDIT_SHEET_PROPERTY_KEY);
+  if (!spreadsheetId) return null;
+
+  try {
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    return spreadsheet.getSheetByName('Audit') || spreadsheet.getSheets()[0];
+  } catch (e) {
+    return null;
+  }
 }
 
 // ==========================================
@@ -96,6 +150,7 @@ function cancelGYG(calendar, windowStart, windowEnd, dateString) {
           const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
           eventsToDelete.forEach(event => {
             console.log(`🚨 ANNULATION GYG : Événement supprimé -> Réf: ${refToCancel}`);
+            appendAuditRow('DELETE', 'GYG', refToCancel, event.getTitle(), event.getStartTime(), 'RED', 'cancelGYG');
             event.deleteEvent();
           });
         }
@@ -125,6 +180,7 @@ function cancelBokun(calendar, windowStart, windowEnd, dateString) {
             const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
             eventsToDelete.forEach(event => {
               console.log(`🚨 ANNULATION BOKUN : Événement supprimé -> Réf: ${refToCancel}`);
+              appendAuditRow('DELETE', 'BOKUN', refToCancel, event.getTitle(), event.getStartTime(), 'OTA-DYNAMIC', 'cancelBokun');
               event.deleteEvent();
             });
           }
@@ -154,6 +210,7 @@ function cancelCivitatis(calendar, windowStart, windowEnd, dateString) {
           const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
           eventsToDelete.forEach(event => {
             console.log(`🚨 ANNULATION CIVITATIS : Événement supprimé -> Réf: ${refToCancel}`);
+            appendAuditRow('DELETE', 'CIVITATIS', refToCancel, event.getTitle(), event.getStartTime(), 'RED', 'cancelCivitatis');
             event.deleteEvent();
           });
         }
@@ -260,6 +317,7 @@ function createGYGEvent(calendar, data) {
   const event = calendar.createEvent(data.title, data.startTime, data.endTime, { location: data.pickup, description: data.description });
   event.setColor(CalendarApp.EventColor.RED);
   console.log(`✅ NOUVEAU : GetYourGuide ajouté -> Réf: ${data.reference} [Couleur : RED]`);
+  appendAuditRow('CREATE', 'GYG', data.reference, data.title, data.startTime, 'RED', 'createGYGEvent');
 }
 
 // --- VIATOR / BOKUN ---
@@ -311,12 +369,15 @@ function createBokunEvent(calendar, data) {
   if (data.reference.startsWith("VIA")) {
     event.setColor(CalendarApp.EventColor.GREEN);
     console.log(`✅ NOUVEAU : Bókun ajouté (Viator) -> Réf: ${data.reference} [Couleur : GREEN]`);
+    appendAuditRow('CREATE', 'BOKUN', data.reference, data.title, data.startTime, 'GREEN', 'createBokunEvent');
   } else if (data.reference.startsWith("BCE")) {
     event.setColor(CalendarApp.EventColor.MAUVE);
     console.log(`✅ NOUVEAU : Bókun ajouté (Barceló) -> Réf: ${data.reference} [Couleur : MAUVE]`);
+    appendAuditRow('CREATE', 'BOKUN', data.reference, data.title, data.startTime, 'MAUVE', 'createBokunEvent');
   } else {
     event.setColor(CalendarApp.EventColor.PALE_GREEN);
     console.log(`✅ NOUVEAU : Bókun ajouté (Autre) -> Réf: ${data.reference} [Couleur : PALE_GREEN]`);
+    appendAuditRow('CREATE', 'BOKUN', data.reference, data.title, data.startTime, 'PALE_GREEN', 'createBokunEvent');
   }
 }
 
@@ -361,4 +422,5 @@ function createCivitatisEvent(calendar, data) {
   const event = calendar.createEvent(data.title, data.startTime, data.endTime, { location: data.pickup, description: data.description });
   event.setColor(CalendarApp.EventColor.RED);
   console.log(`✅ NOUVEAU : Civitatis ajouté -> Réf: ${data.reference} [Couleur : RED]`);
+  appendAuditRow('CREATE', 'CIVITATIS', data.reference, data.title, data.startTime, 'RED', 'createCivitatisEvent');
 }

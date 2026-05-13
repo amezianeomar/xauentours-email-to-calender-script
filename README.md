@@ -29,6 +29,8 @@ For each supported email, it:
 
 `start22HourTrigger()` creates a 5-minute trigger and stores a `KILL_TIME` value so the beta run ends automatically after 22 hours.
 
+`startForeverTrigger()` creates the same 5-minute trigger but clears `KILL_TIME`, so the automation keeps running until you stop the trigger manually.
+
 ### 2. Master engine
 
 `runAllOTAs()` checks the kill switch, defines the time window, loads the calendar, and runs the three OTA processors.
@@ -50,6 +52,23 @@ For each supported email, it:
 - `cancelCivitatis()` searches for Civitatis cancellation emails with subject "Cancellation", extracts numeric reservation numbers.
 
 Each handler independently searches Gmail, extracts the OTA-specific reference format, finds matching calendar events, and deletes them with OTA-specific logging.
+
+### 6. Optional Google Sheet audit trail
+
+- `setupAuditSheet()` creates a Google Sheet named `XauenTours Audit Trail` and stores its ID in script properties.
+- After setup, every create/delete action writes one row into the `Audit` tab.
+- If you do not run `setupAuditSheet()`, the script still works normally and the audit trail stays disabled.
+
+Audit columns:
+
+- Timestamp
+- Action
+- OTA
+- Reference
+- Title
+- Start Time
+- Color
+- Notes
 
 ## Rules to keep stable
 
@@ -84,6 +103,11 @@ This section must be updated every time the script is modified, audited, or push
 - Each handler now has its own Gmail search query, reference extraction regex, and OTA-specific logging.
 - This mirrors the architecture of the booking processors and improves maintainability and debugging.
 - Syntax verified after refactor; ready for next push cycle.
+- Fifth update: added an optional Google Sheet audit trail with a safe manual setup function (`setupAuditSheet()`).
+- Create/delete actions now append rows to the `Audit` tab only after the sheet is configured.
+- Syntax verified after audit-trail patch; audit remains optional until enabled.
+- Sixth update: added `startForeverTrigger()` for permanent mode while keeping `start22HourTrigger()` as the beta launcher.
+- Permanent mode clears the kill switch property and keeps the 5-minute trigger active until manual shutdown.
 
 ## Workflow tracking rule
 
