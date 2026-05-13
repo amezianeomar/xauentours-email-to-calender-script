@@ -5,7 +5,7 @@
  * Architecture guardrails:
  * - Keep checkAndCreateEvent duplicate logic untouched (production failsafe).
  * - Keep OTA-specific date parsing strategies (Bokun/Civitatis non-ISO formats).
- * - Dynamic Calendar colors: RED (GYG), GREEN/Basil (VIA), MAUVE/Grape (BCE), RED (Civitatis).
+ * - Dynamic Calendar colors: YELLOW (GYG), GREEN/Basil (VIA), MAUVE/Grape (BCE), RED (Civitatis).
  * - Always sanitize plain text by removing asterisks before regex matching.
  */
 
@@ -150,7 +150,7 @@ function cancelGYG(calendar, windowStart, windowEnd, dateString) {
           const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
           eventsToDelete.forEach(event => {
             console.log(`🚨 ANNULATION GYG : Événement supprimé -> Réf: ${refToCancel}`);
-            appendAuditRow('DELETE', 'GYG', refToCancel, event.getTitle(), event.getStartTime(), 'RED', 'cancelGYG');
+            appendAuditRow('DELETE', 'GYG', refToCancel, event.getTitle(), event.getStartTime(), 'YELLOW', 'cancelGYG');
             event.deleteEvent();
           });
         }
@@ -280,7 +280,12 @@ function checkAndCreateEvent(calendar, data, createFunction) {
     new Date(data.startTime.getTime() + 600000)
   );
 
-  const isDuplicate = existingEvents.some(event => event.getTitle().includes(data.reference));
+  // Check BOTH: exact reference match (duplicate booking) OR same time with different reference (double-booking at same time)
+  const isDuplicate = existingEvents.some(event => {
+    const titleContainsRef = event.getTitle().includes(data.reference);
+    const sameStartTime = Math.abs(event.getStartTime().getTime() - data.startTime.getTime()) < 60000; // within 1 minute
+    return titleContainsRef || sameStartTime;
+  });
 
   if (!isDuplicate) {
     createFunction(calendar, data);
@@ -315,9 +320,9 @@ function parseGYGEmail(body) {
 
 function createGYGEvent(calendar, data) {
   const event = calendar.createEvent(data.title, data.startTime, data.endTime, { location: data.pickup, description: data.description });
-  event.setColor(CalendarApp.EventColor.RED);
-  console.log(`✅ NOUVEAU : GetYourGuide ajouté -> Réf: ${data.reference} [Couleur : RED]`);
-  appendAuditRow('CREATE', 'GYG', data.reference, data.title, data.startTime, 'RED', 'createGYGEvent');
+  event.setColor(CalendarApp.EventColor.YELLOW);
+  console.log(`✅ NOUVEAU : GetYourGuide ajouté -> Réf: ${data.reference} [Couleur : YELLOW]`);
+  appendAuditRow('CREATE', 'GYG', data.reference, data.title, data.startTime, 'YELLOW', 'createGYGEvent');
 }
 
 // --- VIATOR / BOKUN ---
