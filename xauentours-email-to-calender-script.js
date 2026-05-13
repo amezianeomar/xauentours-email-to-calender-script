@@ -1,11 +1,11 @@
 /**
- * XauenTours - Master OTA Automation (22-Hour Live Beta)
- * Covers: GetYourGuide, Viator/Bokun, Civitatis
+ * XauenTours - Master OTA Automation v2.0 (22-Hour Live Beta)
+ * Covers: GetYourGuide, Viator/Bokun, Civitatis + Auto-Cancellations
  *
  * Architecture guardrails:
  * - Keep checkAndCreateEvent duplicate logic untouched (production failsafe).
  * - Keep OTA-specific date parsing strategies (Bokun/Civitatis non-ISO formats).
- * - Keep calendar colors: YELLOW (GYG), PALE_GREEN (Bokun), RED (Civitatis).
+ * - Dynamic Calendar colors: RED (GYG), GREEN/Basil (VIA), MAUVE/Grape (BCE), RED (Civitatis).
  * - Always sanitize plain text by removing asterisks before regex matching.
  */
 
@@ -61,18 +61,69 @@ function runAllOTAs() {
 
   console.log("⚙️ Master Engine Syncing...");
 
-  // Run the 3 Parsers
+  console.log("⚙️ Master Engine Syncing Bookings & Cancellations...");
+
+  // Run the 3 Booking Parsers
   processGYG(calendar, windowStart, windowEnd, dateString);
   processBokun(calendar, windowStart, windowEnd, dateString);
   processCivitatis(calendar, windowStart, windowEnd, dateString);
+
+  // Run the Universal Cancellation Engine
+  processCancellations(calendar, windowStart, windowEnd, dateString);
 }
 
 // ==========================================
-// 🏭 3. THE OTA PROCESSORS
+// 🗑️ 3. THE CANCELLATION ENGINE
+// ==========================================
+
+function processCancellations(calendar, windowStart, windowEnd, dateString) {
+  const query = `(subject:"cancel" OR subject:"annulation" OR subject:"cancellation" OR subject:"anulada") (from:getyourguide OR from:bokun OR from:civitatis) after:${dateString}`;
+  const threads = GmailApp.search(query);
+
+  const searchStart = new Date();
+  searchStart.setMonth(searchStart.getMonth() - 1);
+  const searchEnd = new Date();
+  searchEnd.setFullYear(searchEnd.getFullYear() + 1);
+
+  threads.forEach(thread => {
+    thread.getMessages().forEach(message => {
+      const msgTime = message.getDate().getTime();
+
+      if (msgTime >= windowStart && msgTime <= windowEnd) {
+        const cleanBodyText = message.getPlainBody().replace(/\*/g, '');
+        let refToCancel = null;
+
+        const gygMatch = cleanBodyText.match(/Numéro de référence[\s\S]*?(GYG[A-Z0-9]+)/i);
+        if (gygMatch) refToCancel = gygMatch[1].trim();
+
+        if (!refToCancel) {
+          const bokunMatch = cleanBodyText.match(/Booking\s*ref[\.\:\s]*([A-Z0-9\-]+)/i);
+          if (bokunMatch) refToCancel = bokunMatch[1].trim();
+        }
+
+        if (!refToCancel) {
+          const civMatch = cleanBodyText.match(/Reservation number:\s*([A-Z0-9]+)/i);
+          if (civMatch) refToCancel = civMatch[1].trim();
+        }
+
+        if (refToCancel && refToCancel !== "NO-REF") {
+          const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
+          eventsToDelete.forEach(event => {
+            console.log(`🚨 CANCELLATION PROCESSED: Deleting event for Ref ${refToCancel}`);
+            event.deleteEvent();
+          });
+        }
+      }
+    });
+  });
+}
+
+// ==========================================
+// 🏭 4. THE OTA PROCESSORS
 // ==========================================
 
 function processGYG(calendar, windowStart, windowEnd, dateString) {
-  const query = `from:notification.getyourguide.com after:${dateString}`;
+  const query = `from:notification.getyourguide.com subject:"Nouvelle réservation" after:${dateString}`;
   const threads = GmailApp.search(query);
 
   threads.forEach(thread => {
@@ -119,7 +170,7 @@ function processCivitatis(calendar, windowStart, windowEnd, dateString) {
 }
 
 // ==========================================
-// 🛡 4. THE DUPLICATE CHECKER (Universal)
+// 🛡️ 5. THE DUPLICATE CHECKER (Universal)
 // ==========================================
 
 function checkAndCreateEvent(calendar, data, createFunction) {
@@ -136,7 +187,7 @@ function checkAndCreateEvent(calendar, data, createFunction) {
 }
 
 // ==========================================
-// ✂️ 5. THE PARSERS & EVENT BUILDERS
+// ✂️ 6. THE PARSERS & EVENT BUILDERS
 // ==========================================
 
 // --- GET YOUR GUIDE ---
@@ -163,7 +214,7 @@ function parseGYGEmail(body) {
 
 function createGYGEvent(calendar, data) {
   const event = calendar.createEvent(data.title, data.startTime, data.endTime, { location: data.pickup, description: data.description });
-  event.setColor(CalendarApp.EventColor.YELLOW);
+  event.setColor(CalendarApp.EventColor.RED);
 }
 
 // --- VIATOR / BOKUN ---
@@ -211,7 +262,14 @@ function parseBokunEmail(body, subject) {
 
 function createBokunEvent(calendar, data) {
   const event = calendar.createEvent(data.title, data.startTime, data.endTime, { location: data.pickup, description: data.description });
-  event.setColor(CalendarApp.EventColor.PALE_GREEN);
+
+  if (data.reference.startsWith("VIA")) {
+    event.setColor(CalendarApp.EventColor.GREEN);
+  } else if (data.reference.startsWith("BCE")) {
+    event.setColor(CalendarApp.EventColor.MAUVE);
+  } else {
+    event.setColor(CalendarApp.EventColor.PALE_GREEN);
+  }
 }
 
 // --- CIVITATIS ---
