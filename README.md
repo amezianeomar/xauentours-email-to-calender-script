@@ -43,9 +43,13 @@ For each supported email, it:
 - `parseBokunEmail()` handles Bokun / Viator-style messages and creates dynamic colors based on the booking reference prefix.
 - `parseCivitatisEmail()` handles Civitatis messages and creates red events.
 
-### 5. Cancellation engine
+### 5. Cancellation engine (OTA-Specific)
 
-`processCancellations()` scans for cancellation keywords in Gmail, extracts the booking reference, and removes matching calendar events from the search window.
+- `cancelGYG()` searches for GYG cancellation emails with subject "annulée", extracts GYG references.
+- `cancelBokun()` searches for Bokun cancellation emails with subject "Cancelled booking", extracts Bokun booking refs (VIA/BCE prefixes).
+- `cancelCivitatis()` searches for Civitatis cancellation emails with subject "Cancellation", extracts numeric reservation numbers.
+
+Each handler independently searches Gmail, extracts the OTA-specific reference format, finds matching calendar events, and deletes them with OTA-specific logging.
 
 ## Rules to keep stable
 
@@ -76,6 +80,10 @@ This section must be updated every time the script is modified, audited, or push
 - Third update: added French console logging to all event creators and the cancellation engine for production debugging and workflow tracking.
 - Verified that MAUVE is used consistently in both logs and color assignments.
 - README updated to reflect logging enhancements; push pending.
+- Fourth update: refactored the cancellation system from a universal `processCancellations()` function into three OTA-specific handlers (`cancelGYG()`, `cancelBokun()`, `cancelCivitatis()`).
+- Each handler now has its own Gmail search query, reference extraction regex, and OTA-specific logging.
+- This mirrors the architecture of the booking processors and improves maintainability and debugging.
+- Syntax verified after refactor; ready for next push cycle.
 
 ## Workflow tracking rule
 

@@ -59,8 +59,6 @@ function runAllOTAs() {
   const yesterday = new Date(now - (24 * 60 * 60 * 1000));
   const dateString = Utilities.formatDate(yesterday, "GMT+1", "yyyy/MM/dd");
 
-  console.log("⚙️ Master Engine Syncing...");
-
   console.log("⚙️ Master Engine Syncing Bookings & Cancellations...");
 
   // Run the 3 Booking Parsers
@@ -68,16 +66,18 @@ function runAllOTAs() {
   processBokun(calendar, windowStart, windowEnd, dateString);
   processCivitatis(calendar, windowStart, windowEnd, dateString);
 
-  // Run the Universal Cancellation Engine
-  processCancellations(calendar, windowStart, windowEnd, dateString);
+  // Run the 3 OTA-Specific Cancellation Handlers
+  cancelGYG(calendar, windowStart, windowEnd, dateString);
+  cancelBokun(calendar, windowStart, windowEnd, dateString);
+  cancelCivitatis(calendar, windowStart, windowEnd, dateString);
 }
 
 // ==========================================
-// 🗑️ 3. THE CANCELLATION ENGINE
+// 🗑️ 3. THE CANCELLATION ENGINE (OTA-Specific Handlers)
 // ==========================================
 
-function processCancellations(calendar, windowStart, windowEnd, dateString) {
-  const query = `(subject:"cancel" OR subject:"annulation" OR subject:"cancellation" OR subject:"anulada") (from:getyourguide OR from:bokun OR from:civitatis) after:${dateString}`;
+function cancelGYG(calendar, windowStart, windowEnd, dateString) {
+  const query = `from:notification.getyourguide.com subject:"annulée" after:${dateString}`;
   const threads = GmailApp.search(query);
 
   const searchStart = new Date();
@@ -88,28 +88,72 @@ function processCancellations(calendar, windowStart, windowEnd, dateString) {
   threads.forEach(thread => {
     thread.getMessages().forEach(message => {
       const msgTime = message.getDate().getTime();
-
       if (msgTime >= windowStart && msgTime <= windowEnd) {
         const cleanBodyText = message.getPlainBody().replace(/\*/g, '');
-        let refToCancel = null;
-
-        const gygMatch = cleanBodyText.match(/Numéro de référence[\s\S]*?(GYG[A-Z0-9]+)/i);
-        if (gygMatch) refToCancel = gygMatch[1].trim();
-
-        if (!refToCancel) {
-          const bokunMatch = cleanBodyText.match(/Booking\s*ref[\.\:\s]*([A-Z0-9\-]+)/i);
-          if (bokunMatch) refToCancel = bokunMatch[1].trim();
-        }
-
-        if (!refToCancel) {
-          const civMatch = cleanBodyText.match(/Reservation number:\s*([A-Z0-9]+)/i);
-          if (civMatch) refToCancel = civMatch[1].trim();
-        }
-
-        if (refToCancel && refToCancel !== "NO-REF") {
+        const refMatch = cleanBodyText.match(/Numéro de référence[\s\S]*?(GYG[A-Z0-9]+)/i);
+        if (refMatch) {
+          const refToCancel = refMatch[1].trim();
           const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
           eventsToDelete.forEach(event => {
-            console.log(`🚨 ANNULATION : Événement supprimé -> Réf: ${refToCancel}`);
+            console.log(`🚨 ANNULATION GYG : Événement supprimé -> Réf: ${refToCancel}`);
+            event.deleteEvent();
+          });
+        }
+      }
+    });
+  });
+}
+
+function cancelBokun(calendar, windowStart, windowEnd, dateString) {
+  const query = `(from:bokun OR subject:"Cancelled booking") after:${dateString}`;
+  const threads = GmailApp.search(query);
+
+  const searchStart = new Date();
+  searchStart.setMonth(searchStart.getMonth() - 1);
+  const searchEnd = new Date();
+  searchEnd.setFullYear(searchEnd.getFullYear() + 1);
+
+  threads.forEach(thread => {
+    thread.getMessages().forEach(message => {
+      const msgTime = message.getDate().getTime();
+      if (msgTime >= windowStart && msgTime <= windowEnd) {
+        const cleanBodyText = message.getPlainBody().replace(/\*/g, '');
+        const refMatch = cleanBodyText.match(/Booking\s*ref[\.\:\s]*([A-Z0-9\-]+)/i);
+        if (refMatch) {
+          const refToCancel = refMatch[1].trim();
+          if (refToCancel !== "NO-REF") {
+            const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
+            eventsToDelete.forEach(event => {
+              console.log(`🚨 ANNULATION BOKUN : Événement supprimé -> Réf: ${refToCancel}`);
+              event.deleteEvent();
+            });
+          }
+        }
+      }
+    });
+  });
+}
+
+function cancelCivitatis(calendar, windowStart, windowEnd, dateString) {
+  const query = `from:notificaciones@civitatis.com subject:"Cancellation" after:${dateString}`;
+  const threads = GmailApp.search(query);
+
+  const searchStart = new Date();
+  searchStart.setMonth(searchStart.getMonth() - 1);
+  const searchEnd = new Date();
+  searchEnd.setFullYear(searchEnd.getFullYear() + 1);
+
+  threads.forEach(thread => {
+    thread.getMessages().forEach(message => {
+      const msgTime = message.getDate().getTime();
+      if (msgTime >= windowStart && msgTime <= windowEnd) {
+        const cleanBodyText = message.getPlainBody().replace(/\*/g, '');
+        const refMatch = cleanBodyText.match(/Reservation number:\s*([A-Z0-9]+)/i);
+        if (refMatch) {
+          const refToCancel = refMatch[1].trim();
+          const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
+          eventsToDelete.forEach(event => {
+            console.log(`🚨 ANNULATION CIVITATIS : Événement supprimé -> Réf: ${refToCancel}`);
             event.deleteEvent();
           });
         }
