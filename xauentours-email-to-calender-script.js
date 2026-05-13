@@ -280,12 +280,8 @@ function checkAndCreateEvent(calendar, data, createFunction) {
     new Date(data.startTime.getTime() + 600000)
   );
 
-  // Check BOTH: exact reference match (duplicate booking) OR same time with different reference (double-booking at same time)
-  const isDuplicate = existingEvents.some(event => {
-    const titleContainsRef = event.getTitle().includes(data.reference);
-    const sameStartTime = Math.abs(event.getStartTime().getTime() - data.startTime.getTime()) < 60000; // within 1 minute
-    return titleContainsRef || sameStartTime;
-  });
+  // Check only by reference ID: each OTA reference is globally unique (GYG, VIA, BCE, Civitatis refs don't overlap)
+  const isDuplicate = existingEvents.some(event => event.getTitle().includes(data.reference));
 
   if (!isDuplicate) {
     createFunction(calendar, data);
