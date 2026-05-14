@@ -224,7 +224,7 @@ function cancelCivitatis(calendar, windowStart, windowEnd, dateString) {
 // ==========================================
 
 function processGYG(calendar, windowStart, windowEnd, dateString) {
-  const query = `from:notification.getyourguide.com subject:"Nouvelle réservation" after:${dateString}`;
+  const query = `from:notification.getyourguide.com (subject:"Nouvelle réservation" OR subject:"Réservation") after:${dateString}`;
   const threads = GmailApp.search(query);
 
   threads.forEach(thread => {
