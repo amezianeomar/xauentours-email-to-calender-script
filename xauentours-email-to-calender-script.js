@@ -50,11 +50,13 @@ function startForeverTrigger() {
 }
 
 function setupAuditSheet() {
-  const spreadsheet = SpreadsheetApp.create(AUDIT_SHEET_NAME);
+  const auditSheetName = (typeof AUDIT_SHEET_NAME !== 'undefined' && AUDIT_SHEET_NAME) ? AUDIT_SHEET_NAME : 'XauenTours Audit Trail';
+  const auditSheetPropertyKey = (typeof AUDIT_SHEET_PROPERTY_KEY !== 'undefined' && AUDIT_SHEET_PROPERTY_KEY) ? AUDIT_SHEET_PROPERTY_KEY : 'AUDIT_SHEET_ID';
+  const spreadsheet = SpreadsheetApp.create(auditSheetName);
   const sheet = spreadsheet.getSheets()[0];
   sheet.setName('Audit');
   sheet.appendRow(['Timestamp', 'Action', 'OTA', 'Reference', 'Title', 'Start Time', 'Color', 'Notes']);
-  PropertiesService.getScriptProperties().setProperty(AUDIT_SHEET_PROPERTY_KEY, spreadsheet.getId());
+  PropertiesService.getScriptProperties().setProperty(auditSheetPropertyKey, spreadsheet.getId());
   console.log(`📝 Audit sheet created and linked -> ${spreadsheet.getUrl()}`);
 }
 
@@ -75,7 +77,8 @@ function appendAuditRow(action, ota, reference, title, startTime, color, notes) 
 }
 
 function getAuditSheet_() {
-  const spreadsheetId = PropertiesService.getScriptProperties().getProperty(AUDIT_SHEET_PROPERTY_KEY);
+  const auditSheetPropertyKey = (typeof AUDIT_SHEET_PROPERTY_KEY !== 'undefined' && AUDIT_SHEET_PROPERTY_KEY) ? AUDIT_SHEET_PROPERTY_KEY : 'AUDIT_SHEET_ID';
+  const spreadsheetId = PropertiesService.getScriptProperties().getProperty(auditSheetPropertyKey);
   if (!spreadsheetId) return null;
 
   try {
@@ -115,15 +118,96 @@ function runAllOTAs() {
 
   console.log("⚙️ Master Engine Syncing Bookings & Cancellations...");
 
-  // Run the 3 Booking Parsers
-  processGYG(calendar, windowStart, windowEnd, dateString);
-  processBokun(calendar, windowStart, windowEnd, dateString);
-  processCivitatis(calendar, windowStart, windowEnd, dateString);
+  // Use 2 Gmail searches total per cycle to stay well under quota.
+  processAllBookings(calendar, windowStart, windowEnd, dateString);
+  processAllCancellations(calendar, windowStart, windowEnd, dateString);
+}
 
-  // Run the 3 OTA-Specific Cancellation Handlers
-  cancelGYG(calendar, windowStart, windowEnd, dateString);
-  cancelBokun(calendar, windowStart, windowEnd, dateString);
-  cancelCivitatis(calendar, windowStart, windowEnd, dateString);
+function processAllBookings(calendar, windowStart, windowEnd, dateString) {
+  const query = `(from:notification.getyourguide.com OR from:bokun OR from:notificaciones@civitatis.com) after:${dateString}`;
+  const threads = GmailApp.search(query);
+
+  threads.forEach(thread => {
+    thread.getMessages().forEach(message => {
+      const msgTime = message.getDate().getTime();
+      if (msgTime < windowStart || msgTime > windowEnd) return;
+
+      const from = message.getFrom().toLowerCase();
+      const subject = message.getSubject().toLowerCase();
+      const body = message.getPlainBody();
+
+      if (from.includes('notification.getyourguide.com') && (subject.includes('nouvelle réservation') || subject.includes('réservation'))) {
+        const data = parseGYGEmail(body);
+        if (data && data.reference) checkAndCreateEvent(calendar, data, createGYGEvent);
+      } else if (from.includes('bokun') && subject.includes('new booking')) {
+        const data = parseBokunEmail(body, message.getSubject());
+        if (data && data.reference && data.reference !== 'NO-REF') {
+          checkAndCreateEvent(calendar, data, createBokunEvent);
+        }
+      } else if (from.includes('notificaciones@civitatis.com') && subject.includes('new booking')) {
+        const data = parseCivitatisEmail(body);
+        if (data && data.reference) checkAndCreateEvent(calendar, data, createCivitatisEvent);
+      }
+    });
+  });
+}
+
+function processAllCancellations(calendar, windowStart, windowEnd, dateString) {
+  const query = `(from:notification.getyourguide.com OR from:bokun OR from:notificaciones@civitatis.com) after:${dateString}`;
+  const threads = GmailApp.search(query);
+
+  const searchStart = new Date();
+  searchStart.setMonth(searchStart.getMonth() - 1);
+  const searchEnd = new Date();
+  searchEnd.setFullYear(searchEnd.getFullYear() + 1);
+
+  threads.forEach(thread => {
+    thread.getMessages().forEach(message => {
+      const msgTime = message.getDate().getTime();
+      if (msgTime < windowStart || msgTime > windowEnd) return;
+
+      const from = message.getFrom().toLowerCase();
+      const subject = message.getSubject().toLowerCase();
+      const cleanBodyText = message.getPlainBody().replace(/\*/g, '');
+
+      if (from.includes('notification.getyourguide.com') && subject.includes('annulée')) {
+        const refMatch = cleanBodyText.match(/Numéro de référence[\s\S]*?(GYG[A-Z0-9]+)/i);
+        if (refMatch) {
+          const refToCancel = refMatch[1].trim();
+          const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
+          eventsToDelete.forEach(event => {
+            console.log(`🚨 ANNULATION GYG : Événement supprimé -> Réf: ${refToCancel}`);
+            appendAuditRow('DELETE', 'GYG', refToCancel, event.getTitle(), event.getStartTime(), 'YELLOW', 'cancelGYG');
+            event.deleteEvent();
+          });
+        }
+      } else if (from.includes('bokun') && subject.includes('cancelled booking')) {
+        const refMatch = cleanBodyText.match(/Booking\s*ref[\.\:\s]*([A-Z0-9\-]+)/i);
+        if (refMatch) {
+          const refToCancel = refMatch[1].trim();
+          if (refToCancel !== 'NO-REF') {
+            const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
+            eventsToDelete.forEach(event => {
+              console.log(`🚨 ANNULATION BOKUN : Événement supprimé -> Réf: ${refToCancel}`);
+              appendAuditRow('DELETE', 'BOKUN', refToCancel, event.getTitle(), event.getStartTime(), 'OTA-DYNAMIC', 'cancelBokun');
+              event.deleteEvent();
+            });
+          }
+        }
+      } else if (from.includes('notificaciones@civitatis.com') && subject.includes('cancellation')) {
+        const refMatch = cleanBodyText.match(/Reservation number:\s*([A-Z0-9]+)/i);
+        if (refMatch) {
+          const refToCancel = refMatch[1].trim();
+          const eventsToDelete = calendar.getEvents(searchStart, searchEnd, { search: refToCancel });
+          eventsToDelete.forEach(event => {
+            console.log(`🚨 ANNULATION CIVITATIS : Événement supprimé -> Réf: ${refToCancel}`);
+            appendAuditRow('DELETE', 'CIVITATIS', refToCancel, event.getTitle(), event.getStartTime(), 'RED', 'cancelCivitatis');
+            event.deleteEvent();
+          });
+        }
+      }
+    });
+  });
 }
 
 // ==========================================
